@@ -69,6 +69,10 @@ jobs:
           cargo update -p openssl --precise "0.10.78"
           cargo update -p openssl-sys --precise "0.9.114"
           cargo update -p zeroize --precise "1.8.2"
+          cargo update -p rusqlite --precise "0.31.0"
+      - name: Pin dependencies for rust-version
+        if: matrix.rust.version == needs.prepare.outputs.rust_version
+        run: cargo update -p rusqlite --precise "0.40.2"
       - name: Pin dependencies for MSRV
         if: matrix.rust.version == '1.63.0'
         run: ./ci/pin-msrv.sh
@@ -175,6 +179,8 @@ jobs:
             override: true
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2.7.8
+      - name: Pin dependencies for rust-version
+        run: cargo update -p rusqlite --precise "0.40.2"
       - uses: actions-rs/clippy-check@v1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}

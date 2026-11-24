@@ -155,6 +155,22 @@ impl ToSql for Impl<bitcoin::Amount> {
     }
 }
 
+impl FromSql for Impl<u64> {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        let value = value.as_i64()?;
+        u64::try_from(value)
+            .map(Self)
+            .map_err(|_| FromSqlError::OutOfRange(value))
+    }
+}
+
+impl ToSql for Impl<u64> {
+    fn to_sql(&self) -> rusqlite::Result<ToSqlOutput<'_>> {
+        let value: i64 = self.0.try_into().map_err(to_sql_error)?;
+        Ok(value.into())
+    }
+}
+
 #[cfg(feature = "miniscript")]
 impl FromSql for Impl<miniscript::Descriptor<miniscript::DescriptorPublicKey>> {
     fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
@@ -302,9 +318,9 @@ impl tx_graph::ChangeSet<ConfirmationBlockTime> {
             Ok((
                 row.get::<_, Impl<bitcoin::Txid>>("txid")?,
                 row.get::<_, Option<Impl<bitcoin::Transaction>>>("raw_tx")?,
-                row.get::<_, Option<u64>>("first_seen")?,
-                row.get::<_, Option<u64>>("last_seen")?,
-                row.get::<_, Option<u64>>("last_evicted")?,
+                row.get::<_, Option<Impl<u64>>>("first_seen")?,
+                row.get::<_, Option<Impl<u64>>>("last_seen")?,
+                row.get::<_, Option<Impl<u64>>>("last_evicted")?,
             ))
         })?;
         for row in row_iter {
@@ -312,13 +328,13 @@ impl tx_graph::ChangeSet<ConfirmationBlockTime> {
             if let Some(Impl(tx)) = tx {
                 changeset.txs.insert(Arc::new(tx));
             }
-            if let Some(first_seen) = first_seen {
+            if let Some(Impl(first_seen)) = first_seen {
                 changeset.first_seen.insert(txid, first_seen);
             }
-            if let Some(last_seen) = last_seen {
+            if let Some(Impl(last_seen)) = last_seen {
                 changeset.last_seen.insert(txid, last_seen);
             }
-            if let Some(last_evicted) = last_evicted {
+            if let Some(Impl(last_evicted)) = last_evicted {
                 changeset.last_evicted.insert(txid, last_evicted);
             }
         }
@@ -354,12 +370,12 @@ impl tx_graph::ChangeSet<ConfirmationBlockTime> {
             Ok((
                 row.get::<_, Impl<bitcoin::BlockHash>>("block_hash")?,
                 row.get::<_, u32>("block_height")?,
-                row.get::<_, u64>("confirmation_time")?,
+                row.get::<_, Impl<u64>>("confirmation_time")?,
                 row.get::<_, Impl<bitcoin::Txid>>("txid")?,
             ))
         })?;
         for row in row_iter {
-            let (hash, height, confirmation_time, Impl(txid)) = row?;
+            let (hash, height, Impl(confirmation_time), Impl(txid)) = row?;
             changeset.anchors.insert((
                 ConfirmationBlockTime {
                     block_id: BlockId::from((&height, &hash.0)),
@@ -392,10 +408,9 @@ impl tx_graph::ChangeSet<ConfirmationBlockTime> {
             Self::TXS_TABLE_NAME,
         ))?;
         for (&txid, &first_seen) in &self.first_seen {
-            let checked_time = first_seen.to_sql()?;
             statement.execute(named_params! {
                 ":txid": Impl(txid),
-                ":first_seen": Some(checked_time),
+                ":first_seen": Impl(first_seen),
             })?;
         }
 
@@ -405,10 +420,9 @@ impl tx_graph::ChangeSet<ConfirmationBlockTime> {
                 Self::TXS_TABLE_NAME,
             ))?;
         for (&txid, &last_seen) in &self.last_seen {
-            let checked_time = last_seen.to_sql()?;
             statement.execute(named_params! {
                 ":txid": Impl(txid),
-                ":last_seen": Some(checked_time),
+                ":last_seen": Impl(last_seen),
             })?;
         }
 
@@ -418,10 +432,9 @@ impl tx_graph::ChangeSet<ConfirmationBlockTime> {
                 Self::TXS_TABLE_NAME,
             ))?;
         for (&txid, &last_evicted) in &self.last_evicted {
-            let checked_time = last_evicted.to_sql()?;
             statement.execute(named_params! {
                 ":txid": Impl(txid),
-                ":last_evicted": Some(checked_time),
+                ":last_evicted": Impl(last_evicted),
             })?;
         }
 
@@ -455,7 +468,7 @@ impl tx_graph::ChangeSet<ConfirmationBlockTime> {
                 ":txid": Impl(*txid),
                 ":block_height": anchor_block.height,
                 ":block_hash": Impl(anchor_block.hash),
-                ":confirmation_time": anchor.confirmation_time,
+                ":confirmation_time": Impl(anchor.confirmation_time),
             })?;
         }
 
